@@ -40,18 +40,22 @@ namespace FleetSharp.SpectrumFi
                 //Do check again now that we are "locked"
                 if ((DateTime.Now - dtLastUpdate).TotalSeconds >= cacheResultsForXSeconds)
                 {
-                    var stats = await GetAllPoolStats();
-                    if (stats != null)
+                    try
                     {
-                        dtLastUpdate = DateTime.Now;
-                        if (poolStats == null) poolStats = stats;
-                        else
+                        var stats = await GetAllPoolStats();
+                        if (stats != null)
                         {
-                            lock (poolStats)
+                            dtLastUpdate = DateTime.Now;
+                            if (poolStats == null) poolStats = stats;
+                            else
                             {
                                 poolStats = stats;
                             }
                         }
+                    }
+                    catch (Exception e)
+                    {
+
                     }
                 }
                 sema.Release();
