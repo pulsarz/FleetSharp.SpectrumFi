@@ -20,6 +20,7 @@ namespace FleetSharp.SpectrumFi
         private static HttpClient client = new HttpClient();
         private static List<SpectrumFiPoolStats>? poolStats = null;
         private static DateTime dtLastUpdate = DateTime.MinValue;
+        private static SemaphoreSlim sema = new SemaphoreSlim(1, 1);
 
         public static string SpectrumFiAPI = "https://api.spectrum.fi/v1";
         public static int cacheResultsForXSeconds = 60 * 15;
@@ -33,24 +34,33 @@ namespace FleetSharp.SpectrumFi
 
         private static async Task TryUpdatePoolStats()
         {
-            var stats = await GetAllPoolStats();
-            if (stats != null)
+            if ((DateTime.Now - dtLastUpdate).TotalSeconds >= cacheResultsForXSeconds)
             {
-                dtLastUpdate = DateTime.Now;
-                if (poolStats == null) poolStats = stats;
-                else
+                await sema.WaitAsync();
+                //Do check again now that we are "locked"
+                if ((DateTime.Now - dtLastUpdate).TotalSeconds >= cacheResultsForXSeconds)
                 {
-                    lock (poolStats)
+                    var stats = await GetAllPoolStats();
+                    if (stats != null)
                     {
-                        poolStats = stats;
+                        dtLastUpdate = DateTime.Now;
+                        if (poolStats == null) poolStats = stats;
+                        else
+                        {
+                            lock (poolStats)
+                            {
+                                poolStats = stats;
+                            }
+                        }
                     }
                 }
+                sema.Release();
             }
         }
 
         public static async Task<double> GetLastPriceForTokenInERGCached(string tokenId)
         {
-            if ((DateTime.Now - dtLastUpdate).TotalSeconds >= cacheResultsForXSeconds) await TryUpdatePoolStats();
+            await TryUpdatePoolStats();
             if (poolStats == null) return 0;
 
             var poolStat = poolStats.Where(x => x.baseId == "0000000000000000000000000000000000000000000000000000000000000000" && x.quoteId == tokenId).FirstOrDefault();
