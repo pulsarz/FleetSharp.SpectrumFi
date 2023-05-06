@@ -1,10 +1,11 @@
 ﻿using System.Net.Http.Json;
+using System.Numerics;
 using FleetSharp.CoinGecko;
 
 namespace FleetSharp.SpectrumFi
 {
     //https://api.spectrum.fi/v1/amm/markets
-    internal class SpectrumFiPoolStats
+    internal class SpectrumFiPoolSummaryStats
     {
         public string? id { get; set; }
         public string? baseId { get; set; }
@@ -15,21 +16,80 @@ namespace FleetSharp.SpectrumFi
         public long value { get; set; }
     }
 
+    public class SpectrumCurrency
+    {
+        public string? id { get; set; }
+        public int? decimals { get; set; }
+    }
+
+    public class SpectrumUnit
+    {
+        public SpectrumCurrency? currency { get; set; }
+    }
+    public class SpectrumWindow
+    {
+        public long? from { get; set; }
+        public long? to { get; set; }
+    }
+
+    public class SpectrumVolume
+    {
+        public long? value { get; set; }
+        public SpectrumUnit? units { get; set; }
+        public SpectrumWindow? window { get; set; }
+    }
+
+    public class SpectrumTVL
+    {
+        public long? value { get; set; }
+        public SpectrumUnit? units { get; set; }
+    }
+
+    public class SpectrumLocked
+    {
+        public string? id { get; set; }
+        public long? amount { get; set; }
+        public string? ticker { get; set; }
+        public int? decimals { get; set; }
+    }
+    public class SpectrumFee
+    {
+        public long? value { get; set; }
+        public SpectrumUnit? units { get; set; }
+        public SpectrumWindow? window { get; set; }
+    }
+
+    public class SpectrumFiPoolStats
+    {
+        public string? id { get; set; }
+        public SpectrumLocked? lockedX { get; set; }
+        public SpectrumLocked? lockedY { get; set; }
+        public SpectrumTVL? tvl { get; set; }
+        public SpectrumVolume? volume { get; set; }
+        public SpectrumFee fees { get; set; }
+        public double yearlyFeesPercent { get; set; }
+    }
+
     public static class SpectrumFi
     {
         private static HttpClient client = new HttpClient();
-        private static List<SpectrumFiPoolStats>? poolStats = null;
+        private static List<SpectrumFiPoolSummaryStats>? poolStats = null;
         private static DateTime dtLastUpdate = DateTime.MinValue;
         private static SemaphoreSlim sema = new SemaphoreSlim(1, 1);
 
         public static string SpectrumFiAPI = "https://api.spectrum.fi/v1";
         public static int cacheResultsForXSeconds = 60 * 15;
 
-        private static async Task<List<SpectrumFiPoolStats>?> GetAllPoolStats()
+        private static async Task<List<SpectrumFiPoolSummaryStats>?> GetAllPoolStats()
         {
-            List<SpectrumFiPoolStats>? stats = null;
-            stats = await client.GetFromJsonAsync<List<SpectrumFiPoolStats>>($"{SpectrumFiAPI}/amm/markets");
+            List<SpectrumFiPoolSummaryStats>? stats = null;
+            stats = await client.GetFromJsonAsync<List<SpectrumFiPoolSummaryStats>>($"{SpectrumFiAPI}/amm/markets");
             return stats;
+        }
+
+        public static async Task<SpectrumFiPoolStats?> GetPoolStats(string poolId)
+        {
+            return await client.GetFromJsonAsync<SpectrumFiPoolStats>($"{SpectrumFiAPI}/amm/pool/{poolId}/stats");
         }
 
         private static async Task TryUpdatePoolStats()
@@ -82,6 +142,14 @@ namespace FleetSharp.SpectrumFi
             var priceInERG = await GetLastPriceForTokenInERGCached(tokenId);
             
             return (priceInERG * (ergPrice ?? 0));
+        }
+
+        public static async Task<string?> FindPoolIdByBaseAndQuote(string baseId, string quoteId)
+        {
+            await TryUpdatePoolStats();
+            if (poolStats == null) return null;
+
+            return poolStats.Where(x => x.baseId == baseId && x.quoteId == quoteId).FirstOrDefault()?.id;
         }
     }
 }
